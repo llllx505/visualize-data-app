@@ -1,0 +1,21 @@
+APP SUMMARY (Repo Evidence Only) — 2026-03-12
+
+What it is
+- Not found in repo. Current working tree contains only `.git` and no app files or documentation.
+
+Who it's for
+- Not found in repo.
+
+What it does (Key features)
+- User-facing functionality: Not found in repo.
+- Core workflows/use cases: Not found in repo.
+- Inputs/outputs (UI/API/files): Not found in repo.
+- Integrations/dependencies: Not found in repo.
+- Persistence/storage: Not found in repo.
+- Auth/roles/permissions: Not found in repo.
+
+How it works (Architecture)
+- Not found in repo (no source code/configs available to infer components, services, or data flow).
+
+How to run (Getting started)
+- Not found in repo (no README, package manifests, Docker files, or run scripts were found).
