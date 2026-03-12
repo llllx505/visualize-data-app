@@ -6,50 +6,198 @@
     <title>Data Visualizer + QC</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
-      body { font-family: Arial, sans-serif; margin: 16px; }
-      #controls { margin-bottom: 12px; }
-      #stats { margin-top: 12px; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+      
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        padding: 40px;
+      }
+      
+      h1 {
+        color: #2c3e50;
+        margin-bottom: 10px;
+        font-size: 2.5em;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      
+      .subtitle { color: #7f8c8d; margin-bottom: 30px; font-size: 1.1em; }
+      
+      h2 {
+        color: #2c3e50;
+        margin-top: 30px;
+        margin-bottom: 15px;
+        font-size: 1.5em;
+        border-bottom: 3px solid #667eea;
+        padding-bottom: 10px;
+      }
+      
+      h3 { color: #34495e; margin: 15px 0 10px 0; }
+      
+      hr { border: none; border-top: 1px solid #ecf0f1; margin: 30px 0; }
+      
+      #controls {
+        margin-bottom: 20px;
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+      }
+      
+      label {
+        font-weight: 500;
+        color: #2c3e50;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      
+      select, input[type="number"] {
+        padding: 8px 12px;
+        border: 2px solid #ecf0f1;
+        border-radius: 6px;
+        font-size: 1em;
+        transition: all 0.3s ease;
+      }
+      
+      select:focus, input[type="number"]:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+      }
+      
+      button {
+        padding: 10px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 1em;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102,126,234,0.3);
+      }
+      
+      button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102,126,234,0.4);
+      }
+      
+      button:active {
+        transform: translateY(0);
+      }
+      
+      #plot {
+        width: 100%;
+        max-width: 900px;
+        height: 400px;
+        margin: 20px 0;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      
+      #stats {
+        background: linear-gradient(135deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        border-left: 4px solid #667eea;
+        font-family: 'Courier New', monospace;
+        white-space: pre-line;
+      }
+      
+      #message {
+        color: #e74c3c;
+        font-weight: 600;
+        padding: 10px;
+        background: #fadbd8;
+        border-radius: 6px;
+        margin-top: 10px;
+      }
+      
+      #qc, #raw {
+        background: #f8f9fa;
+        border: 1px solid #ecf0f1;
+        border-radius: 6px;
+        padding: 12px;
+        overflow: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
+      }
+      
+      .info-box {
+        background: linear-gradient(135deg, rgba(46,204,113,0.1) 0%, rgba(52,152,219,0.1) 100%);
+        border-left: 4px solid #2ecc71;
+        padding: 12px;
+        border-radius: 6px;
+        margin: 10px 0;
+        color: #27ae60;
+      }
     </style>
   </head>
   <body>
-    <h1>Data Visualizer + QC</h1>
-    
-    <h2>Version Performance Comparison</h2>
-    <div id="versionComparison" style="background:#f9f9f9;border:1px solid #ddd;border-radius:8px;padding:16px;margin-bottom:20px"></div>
-    
-    <hr />
-    
-    <h2>Field Analysis</h2>
-    <div id="controls">
-      <label>Field: <select id="fieldSelect"></select></label>
-      <label style="margin-left:12px">Bins: <input id="bins" type="number" value="10" min="1" max="100" style="width:80px"></label>
-      <button id="refreshBtn">Refresh</button>
-    </div>
+    <div class="container">
+      <h1>📊 Data Visualizer + QC</h1>
+      <p class="subtitle">Advanced version comparison for caption generation and quality assessment</p>
+      
+      <h2>🏆 Version Performance Comparison</h2>
+      <div id="versionComparison" style="background:#f9f9f9;border:1px solid #ddd;border-radius:8px;padding:16px;margin-bottom:20px"></div>
+      
+      <hr />
+      
+      <h2>📈 Field Analysis</h2>
+      <div id="controls">
+        <label>📌 Field: <select id="fieldSelect"></select></label>
+        <label>📊 Bins: <input id="bins" type="number" value="10" min="1" max="100" style="width:80px"></label>
+        <button id="refreshBtn">🔄 Refresh</button>
+      </div>
 
-    <div id="plot" style="width:100%;max-width:900px;height:400px;"></div>
-    <div id="stats"></div>
-    <div id="message" style="color:#a00;margin-top:8px"></div>
-    <h2>QC Summary</h2>
-    <pre id="qc"></pre>
-    <h3>Raw values (sample)</h3>
-    <div id="raw" style="max-width:900px;overflow:auto;max-height:200px;border:1px solid #eee;padding:8px;background:#fafafa"></div>
-    <hr />
-    <h2>Image QC Comparison (Version-wise)</h2>
-    <div style="margin-bottom:12px">
-      <label>Sort by: 
-        <select id="sortBy" style="margin-left:8px">
-          <option value="id">Image ID</option>
-          <option value="max-diff">Max Difference</option>
-        </select>
-      </label>
-      <button id="prevImageBtn" style="margin-left:20px">← Previous</button>
-      <span id="imageCounter" style="margin:0 12px;font-weight:bold"></span>
-      <button id="nextImageBtn">Next →</button>
-      <label style="margin-left:20px">
-        <input id="showOnlyDiff" type="checkbox"> Show only versions with differences
-      </label>
+      <div id="plot" style="width:100%;max-width:900px;height:400px;"></div>
+      <div id="stats"></div>
+      <div id="message" style="color:#a00;margin-top:8px"></div>
+      
+      <h2>📋 QC Summary</h2>
+      <pre id="qc"></pre>
+      
+      <h3>📝 Raw values (sample)</h3>
+      <div id="raw" style="max-width:900px;overflow:auto;max-height:200px;border:1px solid #eee;padding:8px;background:#fafafa"></div>
+      
+      <hr />
+      
+      <h2>🖼️ Image QC Comparison (Version-wise)</h2>
+      <div style="margin-bottom:12px">
+        <label>🔀 Sort by: 
+          <select id="sortBy" style="margin-left:8px">
+            <option value="id">Image ID</option>
+            <option value="max-diff">Max Difference</option>
+          </select>
+        </label>
+        <button id="prevImageBtn" style="margin-left:20px">← Previous</button>
+        <span id="imageCounter" style="margin:0 12px;font-weight:bold"></span>
+        <button id="nextImageBtn">Next →</button>
+        <label style="margin-left:20px">
+          <input id="showOnlyDiff" type="checkbox"> Show only versions with differences
+        </label>
+      </div>
+      <div id="imageComparison" style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:16px"></div>
     </div>
-    <div id="imageComparison" style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:16px"></div>
 
     <script src="/app.js"></script>
   </body>
