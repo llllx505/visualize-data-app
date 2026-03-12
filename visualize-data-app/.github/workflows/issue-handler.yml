@@ -1,0 +1,208 @@
+name: Auto Issue Handler
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  handle-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Classify and label issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body.toLowerCase();
+            const labels = [];
+
+            // Auto-classify based on keywords
+            if (body.includes('bug') || body.includes('error') || body.includes('not working')) {
+              labels.push('bug');
+            }
+            if (body.includes('feature') || body.includes('request') || body.includes('enhancement')) {
+              labels.push('enhancement');
+            }
+            if (body.includes('performance') || body.includes('slow') || body.includes('optimize')) {
+              labels.push('performance');
+            }
+            if (body.includes('documentation') || body.includes('docs') || body.includes('readme')) {
+              labels.push('documentation');
+            }
+            if (body.includes('ui') || body.includes('visual') || body.includes('style')) {
+              labels.push('ui-improvement');
+            }
+            if (body.includes('version') || body.includes('comparison')) {
+              labels.push('version-comparison');
+            }
+
+            // Add labels
+            if (labels.length > 0) {
+              github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labels
+              });
+
+              console.log(`Added labels: ${labels.join(', ')}`);
+            }
+
+      - name: Add initial response
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            
+            // Check if this is the first time (avoid duplicate comments)
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number
+            });
+            
+            const botComments = comments.data.filter(c => c.user.login === 'github-actions[bot]');
+            if (botComments.length === 0) {
+              const response = `### 🤖 Issue Auto-Handler
+              
+Thank you for reporting this issue! I've automatically classified and labeled it.
+
+**Process:**
+1. Issue analyzed and categorized
+2. Labels applied based on content
+3. This issue is now tracked in our improvement queue
+
+**Next steps:**
+- The development team will review this issue
+- We'll update you on progress
+- Feel free to provide additional details
+
+---
+*This is an automated response. Your issue has been successfully logged.* 📝`;
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: response
+              });
+            }
+
+      - name: Create branch for bug issues
+        if: contains(github.event.issue.labels.*.name, 'bug')
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const branchName = `bugfix/issue-${issue.number}-${issue.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`.slice(0, 50);
+            
+            try {
+              // Get the default branch
+              const repo = await github.rest.repos.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
+              
+              const defaultBranch = repo.data.default_branch;
+              
+              // Get latest commit from default branch
+              const ref = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${defaultBranch}`
+              });
+              
+              // Create new branch
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/heads/${branchName}`,
+                sha: ref.data.object.sha
+              });
+              
+              console.log(`Created branch: ${branchName}`);
+              
+              // Comment with branch info
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `🔧 Created bugfix branch: \`${branchName}\``
+              });
+            } catch (error) {
+              console.log(`Branch might already exist or error: ${error.message}`);
+            }
+
+      - name: Trigger tests for high-priority issues
+        if: contains(github.event.issue.labels.*.name, 'bug') || contains(github.event.issue.labels.*.name, 'critical')
+        run: |
+          echo "🧪 High-priority issue detected - flagged for testing"
+          echo "Issue: ${{ github.event.issue.title }}"
+          echo "Labels: ${{ join(github.event.issue.labels.*.name, ', ') }}"
+
+  update-roadmap:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Update issue milestone
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = issue.labels.map(l => l.name);
+            
+            // Assign milestone based on priority
+            let milestone = null;
+            if (labels.includes('bug')) {
+              milestone = 'v1.1.0 - Bug Fixes';
+            } else if (labels.includes('enhancement')) {
+              milestone = 'v1.2.0 - New Features';
+            } else if (labels.includes('ui-improvement')) {
+              milestone = 'v1.1.1 - UI Polish';
+            } else if (labels.includes('performance')) {
+              milestone = 'v1.3.0 - Performance';
+            }
+            
+            if (milestone) {
+              try {
+                // Get or create milestone
+                const milestones = await github.rest.issues.listMilestones({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo
+                });
+                
+                let milestoneId = milestones.data.find(m => m.title === milestone)?.number;
+                
+                if (!milestoneId) {
+                  const newMilestone = await github.rest.issues.createMilestone({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title: milestone
+                  });
+                  milestoneId = newMilestone.data.number;
+                }
+                
+                // Update issue with milestone
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  milestone: milestoneId
+                });
+                
+                console.log(`Assigned milestone: ${milestone}`);
+              } catch (error) {
+                console.log(`Could not assign milestone: ${error.message}`);
+              }
+            }

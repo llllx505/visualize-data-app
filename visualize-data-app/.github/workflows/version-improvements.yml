@@ -1,0 +1,234 @@
+name: Version Comparison Improvements
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  enhance-version-comparison:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.body, 'version') || contains(github.event.issue.body, 'comparison') || contains(github.event.issue.labels.*.name, 'version-comparison')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Analyze enhancement needs
+        id: analyze
+        run: |
+          ISSUE_BODY="${{ github.event.issue.body }}"
+          
+          # Check for specific feature requests
+          if echo "$ISSUE_BODY" | grep -qi "comparison.*table"; then
+            echo "needs_table=true" >> $GITHUB_OUTPUT
+          fi
+          if echo "$ISSUE_BODY" | grep -qi "chart\|graph\|visual"; then
+            echo "needs_chart=true" >> $GITHUB_OUTPUT
+          fi
+          if echo "$ISSUE_BODY" | grep -qi "export\|download\|report"; then
+            echo "needs_export=true" >> $GITHUB_OUTPUT
+          fi
+          if echo "$ISSUE_BODY" | grep -qi "filter\|search"; then
+            echo "needs_filter=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update enhancements tracker
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            
+            let enhancements = [];
+            if ('${{ steps.analyze.outputs.needs_table }}' === 'true') {
+              enhancements.push('📊 Enhanced comparison table');
+            }
+            if ('${{ steps.analyze.outputs.needs_chart }}' === 'true') {
+              enhancements.push('📈 Advanced visualization charts');
+            }
+            if ('${{ steps.analyze.outputs.needs_export }}' === 'true') {
+              enhancements.push('💾 Export/Download reports');
+            }
+            if ('${{ steps.analyze.outputs.needs_filter }}' === 'true') {
+              enhancements.push('🔍 Advanced filtering options');
+            }
+            
+            if (enhancements.length > 0) {
+              const response = `### 🚀 Planned Enhancements\n\n${enhancements.map(e => `- [ ] ${e}`).join('\n')}\n\nWe're working on implementing these features to improve version comparison.`;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: response
+              });
+            }
+
+      - name: Create enhancement branch
+        run: |
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          BRANCH_NAME="enhance/version-comparison-${ISSUE_NUMBER}"
+          
+          echo "Creating branch: $BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if [ -z "$(git ls-remote origin $BRANCH_NAME)" ]; then
+            git checkout -b "$BRANCH_NAME"
+            
+            # Create enhancement notes
+            mkdir -p .enhancement_proposals
+            cat > ".enhancement_proposals/issue_${ISSUE_NUMBER}.md" << 'EOF'
+# Enhancement Proposal
+
+**Issue**: ${{ github.event.issue.number }}
+**Title**: ${{ github.event.issue.title }}
+
+## Analysis
+- Requested features identified
+- Enhancement opportunities noted
+- Implementation planned
+
+## Next Steps
+1. Code review
+2. Implementation
+3. Testing
+4. Deployment
+
+EOF
+            
+            git add ".enhancement_proposals/issue_${ISSUE_NUMBER}.md"
+            git commit -m "docs: Enhancement proposal for issue #${ISSUE_NUMBER}"
+            git push origin "$BRANCH_NAME" || echo "Branch already exists or cannot push"
+          fi
+
+  generate-comparison-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create version comparison report
+        run: |
+          cat > VERSION_COMPARISON_GUIDE.md << 'EOF'
+# Version Comparison Guide
+
+## Overview
+This application provides comprehensive version comparison for caption generation methods and their QC results.
+
+## Features
+
+### 1. Version Performance Comparison
+- **Metric Aggregation**: Automatically aggregates metrics across all images
+- **Average Calculations**: Computes mean, min, max for each metric
+- **Best Version Highlighting**: Identifies top-performing versions visually
+
+### 2. Per-Image Comparison
+- **Side-by-side Visualization**: Compare captions and results for each image
+- **Difference Analysis**: Highlights deviations between versions
+- **Interactive Navigation**: Browse through all images with sorting options
+
+### 3. Supported Metrics
+- Score
+- Accuracy (acc)
+- Precision
+- Recall
+- F1-Score
+- Custom metrics (any numeric field)
+
+## Usage Examples
+
+### Basic Usage
+1. Open http://localhost:3000
+2. View the Version Performance table at the top
+3. Scroll down to compare individual images
+
+### Sorting and Filtering
+- Sort by: Image ID or Max Difference
+- Filter: Show only images with differences
+- Navigate: Use Previous/Next buttons
+
+### Data Format
+```json
+{
+  "images_data/image.jpg": {
+    "caption_v1": "description text",
+    "result_v1": {"score": 0.85, "acc": 0.92},
+    "caption_v2": "description text",
+    "result_v2": {"score": 0.88, "acc": 0.95}
+  }
+}
+```
+
+## API Endpoints
+- `GET /api/data`: Returns all images with their versions and results
+
+## Customization
+- Modify bin count in the histogram
+- Adjust thresholds for difference highlighting
+- Add new result fields dynamically
+
+---
+*For more information, see README.md*
+EOF
+          
+          echo "✓ Generated version comparison guide"
+
+      - name: Commit guide to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git diff --quiet HEAD VERSION_COMPARISON_GUIDE.md 2>/dev/null; then
+            echo "File unchanged, skipping commit"
+          else
+            git add VERSION_COMPARISON_GUIDE.md
+            git commit -m "docs: Comprehensive version comparison guide" || echo "No changes to commit"
+            git push origin HEAD:main || echo "Cannot push to main"
+          fi
+
+  notify-issue-team:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add helpful resources
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (!issue) return;
+            
+            const resourceLinks = `### 📚 Helpful Resources
+
+- [VERSION_COMPARISON_GUIDE.md](VERSION_COMPARISON_GUIDE.md) - Comprehensive usage guide
+- [README.md](README.md) - Project overview
+- [server.js](server.js) - Backend API implementation
+- [app.js](app.js) - Frontend logic
+
+### 🔗 Related Issues
+Check if there are similar issues already reported.
+
+### 💡 Tips
+- Attach screenshots or data samples if possible
+- Describe expected vs actual behavior
+- Include your environment details
+`;
+            
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number
+            });
+            
+            if (!comments.data.some(c => c.body.includes('Helpful Resources'))) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: resourceLinks
+              });
+            }
