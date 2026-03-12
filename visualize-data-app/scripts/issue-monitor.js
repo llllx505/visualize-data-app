@@ -110,7 +110,7 @@ function makeGitHubRequest(path, method = 'GET', body = null) {
 async function getOpenIssues() {
   try {
     log('🔍 Fetching open issues...', 'cyan');
-    const issues = await makeGitHubRequest(`${CONFIG.repo}/issues?state=open&per_page=50&sort=created&direction=desc`);
+    const issues = await makeGitHubRequest(`/${CONFIG.repo}/issues?state=open&per_page=50&sort=created&direction=desc`);
     
     if (Array.isArray(issues)) {
       log(`✅ Found ${issues.length} open issues`, 'green');
