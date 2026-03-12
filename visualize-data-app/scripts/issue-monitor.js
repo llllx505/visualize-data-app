@@ -77,6 +77,11 @@ function makeGitHubRequest(path, method = 'GET', body = null) {
         'Accept': 'application/vnd.github.v3+json',
       },
     };
+    
+    // 添加 GitHub Token 认证（如果提供）
+    if (process.env.GITHUB_TOKEN) {
+      options.headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+    }
 
     const req = https.request(options, (res) => {
       let data = '';
