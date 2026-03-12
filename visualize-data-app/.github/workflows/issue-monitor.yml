@@ -1,0 +1,279 @@
+name: Continuous Issue Monitoring
+
+# 每小时检查一次新 issue
+on:
+  schedule:
+    - cron: '0 * * * *'  # 每小时顶部运行
+  # 也可以手动触发
+  workflow_dispatch:
+    inputs:
+      check_interval:
+        description: '检查间隔（小时）'
+        required: false
+        default: '1'
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  monitor-issues:
+    runs-on: ubuntu-latest
+    name: Monitor and Process GitHub Issues
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Check for new issues
+        id: check_issues
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              sort: 'created',
+              direction: 'desc',
+              per_page: 50
+            });
+
+            console.log(`Found ${issues.data.length} open issues`);
+            
+            const recentIssues = issues.data.filter(issue => {
+              // 只处理24小时内创建的 issues
+              const createdAt = new Date(issue.created_at);
+              const now = new Date();
+              const hoursDiff = (now - createdAt) / (1000 * 60 * 60);
+              return hoursDiff < 24 && !issue.pull_request;
+            });
+
+            console.log(`Found ${recentIssues.length} recent issues created in the last 24 hours`);
+            
+            core.setOutput('issue_count', recentIssues.length);
+            core.setOutput('issues', JSON.stringify(recentIssues));
+
+      - name: Process unprocessed issues
+        if: steps.check_issues.outputs.issue_count > 0
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issues = JSON.parse('${{ steps.check_issues.outputs.issues }}');
+            
+            for (const issue of issues) {
+              console.log(`\n=== Processing Issue #${issue.number} ===`);
+              console.log(`Title: ${issue.title}`);
+              console.log(`Body: ${issue.body?.substring(0, 100) || 'N/A'}...`);
+              
+              // 检查是否已有自动响应
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number
+              });
+
+              const hasAutoResponse = comments.data.some(c => 
+                c.user.type === 'Bot' && c.body.includes('Auto-processed')
+              );
+
+              if (hasAutoResponse) {
+                console.log(`Issue #${issue.number} already processed, skipping...`);
+                continue;
+              }
+
+              // 分类处理
+              const body = (issue.body || '').toLowerCase();
+              const title = (issue.title || '').toLowerCase();
+              const fullText = body + ' ' + title;
+
+              const keywords = {
+                bug: ['bug', 'error', 'not working', 'broken', 'crash', 'fail'],
+                enhancement: ['feature', 'request', 'add', 'implement', 'support'],
+                performance: ['slow', 'performance', 'optimize', 'faster', 'lag'],
+                documentation: ['doc', 'readme', 'guide', 'tutorial', 'example'],
+                'ui-improvement': ['ui', 'visual', 'style', 'design', 'look', 'ugly', 'beautiful'],
+                'data-handling': ['data', 'import', 'export', 'format', 'parsing'],
+                'version-comparison': ['version', 'comparison', 'compare', 'metric'],
+                question: ['how', 'why', 'what', 'can', 'help', '?'],
+              };
+
+              let labels = [];
+              let priority = 'medium';
+
+              Object.entries(keywords).forEach(([label, words]) => {
+                if (words.some(word => fullText.includes(word))) {
+                  labels.push(label);
+                  if (label === 'bug') priority = 'high';
+                }
+              });
+
+              // 默认分类
+              if (labels.length === 0) {
+                labels.push('triage-needed');
+              }
+
+              console.log(`Assigned labels: ${labels.join(', ')}`);
+
+              // 添加标签
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: labels
+                });
+              } catch (e) {
+                console.log(`Could not add labels: ${e.message}`);
+              }
+
+              // 发送自动回复
+              const responseMessage = `### 🤖 Auto-processed by Issue Monitor
+
+**Status**: ✅ Received and analyzed
+
+**Classification**:
+- Labels: ${labels.map(l => '🏷️ ' + l).join(', ')}
+- Priority: ${priority}
+
+**Next Steps**:
+1. Our team will review this issue
+2. If it's a bug, we'll create a fix branch
+3. If it's a feature, we'll add it to roadmap
+4. You'll receive updates as we progress
+
+Thank you for reporting! 🙏`;
+
+              try {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: responseMessage
+                });
+                
+                console.log(`✅ Commented on issue #${issue.number}`);
+              } catch (e) {
+                console.log(`Could not comment: ${e.message}`);
+              }
+            }
+
+      - name: Generate monitoring report
+        if: steps.check_issues.outputs.issue_count > 0
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issues = JSON.parse('${{ steps.check_issues.outputs.issues }}');
+            
+            console.log('\n📊 === Issue Monitoring Report ===');
+            console.log(`Total open issues: ${issues.length}`);
+            console.log(`Monitoring timestamp: ${new Date().toISOString()}`);
+            
+            const byLabel = {};
+            issues.forEach(issue => {
+              issue.labels?.forEach(label => {
+                byLabel[label.name] = (byLabel[label.name] || 0) + 1;
+              });
+            });
+            
+            console.log('\n📈 Issues by category:');
+            Object.entries(byLabel)
+              .sort((a, b) => b[1] - a[1])
+              .forEach(([label, count]) => {
+                console.log(`  - ${label}: ${count}`);
+              });
+
+      - name: Auto-create PRs for critical bugs
+        if: success()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issues = JSON.parse('${{ steps.check_issues.outputs.issues }}');
+            
+            for (const issue of issues) {
+              const isBug = issue.labels?.some(l => l.name === 'bug');
+              const hasNoPR = !issue.pull_request;
+              
+              if (isBug && hasNoPR) {
+                // 检查是否已有关联的 PR
+                const prs = await github.rest.pulls.list({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  head: `bugfix/issue-${issue.number}`
+                });
+
+                if (prs.data.length === 0) {
+                  console.log(`Creating bugfix branch for issue #${issue.number}`);
+                  
+                  // 这里可以添加自动创建 PR 的逻辑
+                  // 但通常需要更多上下文，所以只记录日志
+                }
+              }
+            }
+
+  notify-summary:
+    runs-on: ubuntu-latest
+    needs: monitor-issues
+    if: always()
+    
+    steps:
+      - name: Create monitoring summary
+        uses: actions/github-script@v6
+        with:
+          script: |
+            console.log('✅ Issue monitoring cycle completed');
+            console.log(`Timestamp: ${new Date().toISOString()}`);
+
+jobs:
+  weekly-summary:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 0 * * 1'
+    # 每周一凌晨0点运行
+    
+    steps:
+      - name: Generate weekly report
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              sort: 'created',
+              direction: 'desc',
+              per_page: 100
+            });
+
+            // 统计本周的 issue
+            const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const weeklyIssues = issues.data.filter(issue => 
+              new Date(issue.created_at) > oneWeekAgo
+            );
+
+            const closed = weeklyIssues.filter(i => i.state === 'closed').length;
+            const open = weeklyIssues.filter(i => i.state === 'open').length;
+
+            const summary = `## 📊 Weekly Issue Summary
+
+**Period**: Last 7 days  
+**Total Issues**: ${weeklyIssues.length}  
+**Closed**: ${closed}  
+**Open**: ${open}  
+**Resolution Rate**: ${weeklyIssues.length > 0 ? ((closed / weeklyIssues.length) * 100).toFixed(1) : 0}%
+
+### Issues by Type
+${['bug', 'enhancement', 'documentation', 'performance'].map(type => {
+  const count = issues.data.filter(i => i.labels?.some(l => l.name === type)).length;
+  return `- ${type}: ${count}`;
+}).join('\n')}
+
+**Last Updated**: ${new Date().toISOString()}`;
+
+            console.log(summary);
