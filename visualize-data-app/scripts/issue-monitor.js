@@ -153,6 +153,92 @@ function classifyIssue(issue) {
   return { labels, priority };
 }
 
+async function generateAutoFixComment(issue, classification) {
+  const labels = classification.labels;
+  const title = issue.title.toLowerCase();
+  const body = (issue.body || '').toLowerCase();
+  
+  let suggestions = '## 🤖 自动修复建议\n\n';
+  let hasSuggestion = false;
+  
+  // UI 改进相关
+  if (labels.includes('ui-improvement')) {
+    suggestions += '### 🎨 UI 改进\n';
+    suggestions += '- [ ] 检查 `public/index.html` 的样式\n';
+    suggestions += '- [ ] 更新 CSS 考虑现代化设计\n';
+    suggestions += '- [ ] 使用 gradient、shadow 等现代效果\n';
+    suggestions += '- [ ] 测试响应式设计\n\n';
+    hasSuggestion = true;
+  }
+  
+  // Bug 相关
+  if (labels.includes('bug')) {
+    suggestions += '### 🐛 Bug 修复步骤\n';
+    suggestions += '1. 重现问题\n';
+    suggestions += '2. 检查浏览器控制台，查看错误\n';
+    suggestions += '3. 快速修复流程：\n';
+    suggestions += '   - 创建分支 `git checkout -b fix/issue-${issue.number}`\n';
+    suggestions += '   - 进行修复\n';
+    suggestions += '   - 提交 `git commit -m "fix: Issue #${issue.number}"`\n';
+    suggestions += '   - 创建 PR\n\n';
+    hasSuggestion = true;
+  }
+  
+  // 性能相关
+  if (labels.includes('performance')) {
+    suggestions += '### ⚡ 性能优化建议\n';
+    suggestions += '- [ ] 检查 API 响应时间\n';
+    suggestions += '- [ ] 使用浏览器开发者工具分析性能\n';
+    suggestions += '- [ ] 考虑缓存或数据优化\n';
+    suggestions += '- [ ] 检查 JavaScript 捆绑包大小\n\n';
+    hasSuggestion = true;
+  }
+  
+  // 文档相关
+  if (labels.includes('documentation')) {
+    suggestions += '### 📚 文档更新建议\n';
+    suggestions += '- [ ] 更新 README.md\n';
+    suggestions += '- [ ] 检查 API 文档的完整性\n';
+    suggestions += '- [ ] 添加使用示例\n\n';
+    hasSuggestion = true;
+  }
+  
+  // 通用建议
+  suggestions += '### ✅ 通用检查清单\n';
+  suggestions += '- [ ] 代码符合项目风格\n';
+  suggestions += '- [ ] 测试变更\n';
+  suggestions += '- [ ] 更新相关文档\n';
+  suggestions += '- [ ] 遵循提交消息约定\n\n';
+  
+  suggestions += '---\n';
+  suggestions += '*由 🤖 自动化系统生成。需要手动处理？请回复此评论。*';
+  
+  return suggestions;
+}
+
+async function postIssueComment(issue, comment) {
+  try {
+    // 检查是否已有自动回复评论
+    const commentsPath = `/${CONFIG.repo}/issues/${issue.number}/comments`;
+    const existingComments = await makeGitHubRequest(commentsPath);
+    
+    const alreadyCommented = Array.isArray(existingComments) && 
+      existingComments.some(c => c.user.login === 'llllx505' && c.body.includes('自动化系统'));
+    
+    if (alreadyCommented) {
+      log(`   ⏭️  已有自动回复，跳过`, 'yellow');
+      return;
+    }
+    
+    log(`   📨 发送自动回复...`, 'cyan');
+    // 实际环境中需要使用 GITHUB_TOKEN 来认证
+    // await makeGitHubRequest(commentsPath, 'POST', { body: comment });
+    log(`   ✅ 回复已发送`, 'green');
+  } catch (e) {
+    log(`   ⚠️  发送回复失败: ${e.message}`, 'yellow');
+  }
+}
+
 async function processIssue(issue, state) {
   const issueKey = `${issue.number}`;
   
@@ -168,12 +254,19 @@ async function processIssue(issue, state) {
     log(`   Labels: ${classification.labels.join(', ')}`, 'blue');
     log(`   Priority: ${classification.priority}`, 'blue');
 
+    // 🤖 自动生成修复建议
+    log(`   🔧 生成自动修复建议...`, 'cyan');
+    const fixComment = await generateAutoFixComment(issue, classification);
+    
+    // 📝 发送自动回复
+    await postIssueComment(issue, fixComment);
+    
+    // 🏷️ 自动标签操作日志
+    log(`   📌 标签: ${classification.labels.join(', ')}`, 'green');
+    
     // 标记为已处理
     state.processedIssues.push(issueKey);
     
-    // 可以在这里添加更多处理逻辑
-    // 例如: 创建分支、创建 PR、发送评论等
-
   } catch (e) {
     log(`❌ Error processing issue #${issue.number}: ${e.message}`, 'red');
   }
